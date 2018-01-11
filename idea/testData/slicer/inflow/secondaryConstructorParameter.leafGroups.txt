@@ -1,4 +1,0 @@
-7 class B1: A(<bold>1</bold>)
-4 	constructor(<bold>n: Int</bold>, s: String = "???")
-7 		class B1: A(<bold>1</bold>)
-
