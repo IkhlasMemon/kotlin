@@ -42,7 +42,6 @@ import org.jetbrains.kotlin.types.typeUtil.isAnyOrNullableAny
 import org.jetbrains.kotlin.types.typeUtil.makeNullable
 import org.jetbrains.kotlin.utils.DFS
 import org.jetbrains.kotlin.utils.SmartList
-import org.jetbrains.kotlin.utils.addToStdlib.safeAs
 
 fun ClassDescriptor.getClassObjectReferenceTarget(): ClassDescriptor = companionObjectDescriptor ?: this
 
@@ -424,7 +423,8 @@ fun MemberDescriptor.isEffectivelyExternal(): Boolean {
     return containingClass != null && containingClass.isEffectivelyExternal()
 }
 
-fun isParameterOfAnnotation(parameterDescriptor: ParameterDescriptor): Boolean {
-    val constructedClass = parameterDescriptor.containingDeclaration.safeAs<ConstructorDescriptor>()?.constructedClass
-    return DescriptorUtils.isAnnotationClass(constructedClass)
-}
+fun isParameterOfAnnotation(parameterDescriptor: ParameterDescriptor): Boolean =
+    parameterDescriptor.containingDeclaration.isAnnotationConstructor()
+
+fun DeclarationDescriptor.isAnnotationConstructor(): Boolean =
+    this is ConstructorDescriptor && DescriptorUtils.isAnnotationClass(this.constructedClass)
