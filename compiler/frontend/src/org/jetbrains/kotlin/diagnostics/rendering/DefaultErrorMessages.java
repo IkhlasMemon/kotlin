@@ -247,7 +247,6 @@ public class DefaultErrorMessages {
         MAP.put(FORBIDDEN_VARARG_PARAMETER_TYPE, "Forbidden vararg parameter type: {0}", RENDER_TYPE);
 
         MAP.put(EXPECTED_DECLARATION_WITH_BODY, "Expected declaration must not have a body");
-        MAP.put(EXPECTED_DECLARATION_WITH_DEFAULT_PARAMETER, "Expected declaration cannot have parameters with default values");
         MAP.put(EXPECTED_CLASS_CONSTRUCTOR_DELEGATION_CALL, "Explicit delegation call for constructor of an expected class is not allowed");
         MAP.put(EXPECTED_CLASS_CONSTRUCTOR_PROPERTY_PARAMETER, "Expected class constructor cannot have a property parameter");
         MAP.put(EXPECTED_ENUM_CONSTRUCTOR, "Expected enum class cannot have a constructor");

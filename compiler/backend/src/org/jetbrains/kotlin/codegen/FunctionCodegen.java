@@ -60,6 +60,7 @@ import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodGenericSignature;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterKind;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterSignature;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
+import org.jetbrains.kotlin.resolve.multiplatform.ExpectedActualResolver;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeUtils;
 import org.jetbrains.kotlin.utils.StringsKt;
@@ -86,6 +87,7 @@ import static org.jetbrains.kotlin.descriptors.annotations.AnnotationUtilKt.isEf
 import static org.jetbrains.kotlin.resolve.DescriptorToSourceUtils.getSourceFromDescriptor;
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.*;
 import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.OBJECT_TYPE;
+import static org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm.EXPECTED_FUNCTION_SOURCE_WITH_DEFAULT_ARGUMENTS_NOT_FOUND;
 import static org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils.*;
 import static org.jetbrains.org.objectweb.asm.Opcodes.*;
 
@@ -544,8 +546,10 @@ public class FunctionCodegen {
             methodEnd = new Label();
         }
         else {
-            FrameMap frameMap = createFrameMap(parentCodegen.state, functionDescriptor, signature, isStaticMethod(context.getContextKind(),
-                                                                                                                  functionDescriptor));
+            FrameMap frameMap = createFrameMap(
+                    parentCodegen.state, signature, functionDescriptor.getExtensionReceiverParameter(),
+                    functionDescriptor.getValueParameters(), isStaticMethod(context.getContextKind(), functionDescriptor)
+            );
             if (context.isInlineMethodContext()) {
                 functionFakeIndex = frameMap.enterTemp(Type.INT_TYPE);
             }
@@ -976,7 +980,7 @@ public class FunctionCodegen {
             return;
         }
 
-        if (!isDefaultNeeded(functionDescriptor)) {
+        if (!isDefaultNeeded(functionDescriptor, function)) {
             return;
         }
 
@@ -1019,7 +1023,13 @@ public class FunctionCodegen {
         }
         else {
             mv.visitCode();
-            generateDefaultImplBody(owner, functionDescriptor, mv, loadStrategy, function, memberCodegen, defaultMethod);
+            List<ValueParameterDescriptor> parameters = functionDescriptor.getValueParameters();
+            if (functionDescriptor.isActual() && CollectionsKt.none(parameters, ValueParameterDescriptor::declaresDefaultValue)) {
+                FunctionDescriptor expected = findExpectedForActual(functionDescriptor);
+                assert expected != null : "Expected function should have been found earlier for " + functionDescriptor;
+                parameters = expected.getValueParameters();
+            }
+            generateDefaultImplBody(owner, functionDescriptor, parameters, mv, loadStrategy, function, memberCodegen, defaultMethod);
             endVisit(mv, "default method", getSourceFromDescriptor(functionDescriptor));
         }
     }
@@ -1027,6 +1037,7 @@ public class FunctionCodegen {
     public static void generateDefaultImplBody(
             @NotNull MethodContext methodContext,
             @NotNull FunctionDescriptor functionDescriptor,
+            @NotNull List<ValueParameterDescriptor> valueParameters,
             @NotNull MethodVisitor mv,
             @NotNull DefaultParameterValueLoader loadStrategy,
             @Nullable KtNamedFunction function,
@@ -1037,7 +1048,7 @@ public class FunctionCodegen {
         JvmMethodSignature signature = state.getTypeMapper().mapSignatureWithGeneric(functionDescriptor, methodContext.getContextKind());
 
         boolean isStatic = isStaticMethod(methodContext.getContextKind(), functionDescriptor);
-        FrameMap frameMap = createFrameMap(state, functionDescriptor, signature, isStatic);
+        FrameMap frameMap = createFrameMap(state, signature, functionDescriptor.getExtensionReceiverParameter(), valueParameters, isStatic);
 
         ExpressionCodegen codegen = new ExpressionCodegen(mv, frameMap, signature.getReturnType(), methodContext, state, parentCodegen);
 
@@ -1053,7 +1064,6 @@ public class FunctionCodegen {
             capturedArgumentsCount++;
         }
 
-        List<ValueParameterDescriptor> valueParameters = functionDescriptor.getValueParameters();
         assert valueParameters.size() > 0 : "Expecting value parameters to generate default function " + functionDescriptor;
         int firstMaskIndex = frameMap.enterTemp(Type.INT_TYPE);
         for (int index = 1; index < valueParameters.size(); index++) {
@@ -1121,10 +1131,11 @@ public class FunctionCodegen {
     }
 
     @NotNull
-    public static FrameMap createFrameMap(
+    private static FrameMap createFrameMap(
             @NotNull GenerationState state,
-            @NotNull FunctionDescriptor function,
             @NotNull JvmMethodSignature signature,
+            @Nullable ReceiverParameterDescriptor extensionReceiverParameter,
+            @NotNull List<ValueParameterDescriptor> valueParameters,
             boolean isStatic
     ) {
         FrameMap frameMap = new FrameMap();
@@ -1134,9 +1145,8 @@ public class FunctionCodegen {
 
         for (JvmMethodParameterSignature parameter : signature.getValueParameters()) {
             if (parameter.getKind() == JvmMethodParameterKind.RECEIVER) {
-                ReceiverParameterDescriptor receiverParameter = function.getExtensionReceiverParameter();
-                if (receiverParameter != null) {
-                    frameMap.enter(receiverParameter, state.getTypeMapper().mapType(receiverParameter));
+                if (extensionReceiverParameter != null) {
+                    frameMap.enter(extensionReceiverParameter, state.getTypeMapper().mapType(extensionReceiverParameter));
                 }
                 else {
                     frameMap.enterTemp(parameter.getAsmType());
@@ -1147,7 +1157,7 @@ public class FunctionCodegen {
             }
         }
 
-        for (ValueParameterDescriptor parameter : function.getValueParameters()) {
+        for (ValueParameterDescriptor parameter : valueParameters) {
             frameMap.enter(parameter, state.getTypeMapper().mapType(parameter));
         }
 
@@ -1175,17 +1185,30 @@ public class FunctionCodegen {
         }
     }
 
-    private static boolean isDefaultNeeded(FunctionDescriptor functionDescriptor) {
-        boolean needed = false;
-        if (functionDescriptor != null) {
-            for (ValueParameterDescriptor parameterDescriptor : functionDescriptor.getValueParameters()) {
-                if (parameterDescriptor.declaresDefaultValue()) {
-                    needed = true;
-                    break;
+    private boolean isDefaultNeeded(@NotNull FunctionDescriptor descriptor, @Nullable KtNamedFunction function) {
+        if (descriptor.isActual()) {
+            FunctionDescriptor expected = findExpectedForActual(descriptor);
+            if (expected != null && CollectionsKt.any(expected.getValueParameters(), ValueParameterDescriptor::declaresDefaultValue)) {
+                PsiElement element = DescriptorToSourceUtils.descriptorToDeclaration(expected);
+                if (element == null) {
+                    if (function != null) {
+                        state.getDiagnostics().report(EXPECTED_FUNCTION_SOURCE_WITH_DEFAULT_ARGUMENTS_NOT_FOUND.on(function));
+                    }
+                    return false;
                 }
+
+                return true;
             }
         }
-        return needed;
+
+        return CollectionsKt.any(descriptor.getValueParameters(), ValueParameterDescriptor::declaresDefaultValue);
+    }
+
+    @Nullable
+    private static FunctionDescriptor findExpectedForActual(@NotNull FunctionDescriptor descriptor) {
+        List<MemberDescriptor> compatibleExpectedFunctions = ExpectedActualResolver.INSTANCE
+                .findCompatibleExpectedForActual(descriptor, DescriptorUtils.getContainingModule(descriptor));
+        return (FunctionDescriptor) CollectionsKt.firstOrNull(compatibleExpectedFunctions);
     }
 
     private void generateBridge(

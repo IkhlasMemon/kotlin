@@ -130,6 +130,10 @@ public class DefaultErrorMessagesJvm implements DefaultErrorMessages.Extension {
 
         MAP.put(ASSIGNMENT_TO_ARRAY_LOOP_VARIABLE, "Assignment to a for-in-array loop range variable. Behavior may change in Kotlin 1.3. " +
                                                    "See https://youtrack.jetbrains.com/issue/KT-21354 for more details");
+
+        MAP.put(EXPECTED_FUNCTION_SOURCE_WITH_DEFAULT_ARGUMENTS_NOT_FOUND,
+                "Expected function source is not found, therefore it's impossible to generate default argument values declared there. " +
+                "Please add the corresponding file to compilation sources");
     }
 
     @NotNull

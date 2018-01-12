@@ -111,6 +111,8 @@ public interface ErrorsJvm {
 
     DiagnosticFactory0<KtExpression> ASSIGNMENT_TO_ARRAY_LOOP_VARIABLE = DiagnosticFactory0.create(WARNING);
 
+    DiagnosticFactory0<PsiElement> EXPECTED_FUNCTION_SOURCE_WITH_DEFAULT_ARGUMENTS_NOT_FOUND = DiagnosticFactory0.create(ERROR);
+
     enum NullabilityInformationSource {
         KOTLIN {
             @NotNull

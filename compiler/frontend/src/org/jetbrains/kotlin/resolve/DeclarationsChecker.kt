@@ -764,12 +764,6 @@ class DeclarationsChecker(
             trace.report(EXPECTED_DECLARATION_WITH_BODY.on(function))
         }
 
-        for (parameter in function.valueParameters) {
-            if (parameter.hasDefaultValue()) {
-                trace.report(EXPECTED_DECLARATION_WITH_DEFAULT_PARAMETER.on(parameter))
-            }
-        }
-
         checkPrivateExpectedDeclaration(function, functionDescriptor)
     }
 

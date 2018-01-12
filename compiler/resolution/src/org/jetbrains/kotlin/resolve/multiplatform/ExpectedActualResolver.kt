@@ -10,6 +10,7 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorUtils
+import org.jetbrains.kotlin.resolve.calls.components.hasDefaultValue
 import org.jetbrains.kotlin.resolve.descriptorUtil.classId
 import org.jetbrains.kotlin.resolve.descriptorUtil.isAnnotationConstructor
 import org.jetbrains.kotlin.resolve.descriptorUtil.module
@@ -257,7 +258,7 @@ object ExpectedActualResolver {
 
         areCompatibleTypeParameters(aTypeParams, bTypeParams, platformModule, substitutor).let { if (it != Compatible) return it }
 
-        if (!equalsBy(aParams, bParams, ValueParameterDescriptor::declaresDefaultValue)) return Incompatible.ValueParameterHasDefault
+        if (!valueParameterDefaultsCompatible(aParams, bParams)) return Incompatible.ValueParameterHasDefault
         if (!equalsBy(aParams, bParams, { p -> listOf(p.varargElementType != null) })) return Incompatible.ValueParameterVararg
 
         // Adding noinline/crossinline to parameters is disallowed, except if the expected declaration was not inline at all
@@ -287,6 +288,14 @@ object ExpectedActualResolver {
             aParams.isEmpty() && bParams.all { it.declaresDefaultValue() }
         else
             false
+    }
+
+    private fun valueParameterDefaultsCompatible(
+        aParams: List<ValueParameterDescriptor>,
+        bParams: List<ValueParameterDescriptor>
+    ): Boolean {
+        // TODO: + error on actual
+        return aParams.indices.none { i -> !aParams[i].hasDefaultValue() && bParams[i].declaresDefaultValue() }
     }
 
     private fun areCompatibleTypes(a: KotlinType?, b: KotlinType?, platformModule: ModuleDescriptor): Boolean {

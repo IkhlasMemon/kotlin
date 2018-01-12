@@ -280,8 +280,7 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
         val parentContext = context.parentContext ?: error("Context has no parent: " + context)
         val methodContext = parentContext.intoFunction(callableDescriptor)
 
-        val smap: SMAP
-        if (callDefault) {
+        val smap = if (callDefault) {
             val implementationOwner = state.typeMapper.mapImplementationOwner(callableDescriptor)
             val parentCodegen = FakeMemberCodegen(
                     codegen.parentCodegen, inliningFunction!!, methodContext.parentContext as FieldOwnerContext<*>,
@@ -292,14 +291,15 @@ class PsiSourceCompilerForInline(private val codegen: ExpressionCodegen, overrid
             if (element !is KtNamedFunction) {
                 throw IllegalStateException("Property accessors with default parameters not supported " + callableDescriptor)
             }
+            // TODO: actual/expect?
             FunctionCodegen.generateDefaultImplBody(
-                    methodContext, callableDescriptor, maxCalcAdapter, DefaultParameterValueLoader.DEFAULT,
-                    inliningFunction as KtNamedFunction?, parentCodegen, asmMethod
+                methodContext, callableDescriptor, callableDescriptor.valueParameters, maxCalcAdapter,
+                DefaultParameterValueLoader.DEFAULT, inliningFunction as KtNamedFunction?, parentCodegen, asmMethod
             )
-            smap = createSMAPWithDefaultMapping(inliningFunction, parentCodegen.orCreateSourceMapper.resultMappings)
+            createSMAPWithDefaultMapping(inliningFunction, parentCodegen.orCreateSourceMapper.resultMappings)
         }
         else {
-            smap = generateMethodBody(maxCalcAdapter, callableDescriptor, methodContext, inliningFunction!!, jvmSignature, null)
+            generateMethodBody(maxCalcAdapter, callableDescriptor, methodContext, inliningFunction!!, jvmSignature, null)
         }
         maxCalcAdapter.visitMaxs(-1, -1)
         maxCalcAdapter.visitEnd()
