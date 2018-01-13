@@ -28,9 +28,9 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
 import kotlin.reflect.KParameter
 import kotlin.reflect.full.memberFunctions
-import kotlin.script.experimental.dependencies.DependenciesResolver
 import kotlin.script.dependencies.ScriptDependenciesResolver
 import kotlin.script.experimental.dependencies.AsyncDependenciesResolver
+import kotlin.script.experimental.dependencies.DependenciesResolver
 import kotlin.script.templates.AcceptedAnnotations
 
 open class KotlinScriptDefinitionFromAnnotatedTemplate(
@@ -40,9 +40,15 @@ open class KotlinScriptDefinitionFromAnnotatedTemplate(
 ) : KotlinScriptDefinition(template) {
 
     val scriptFilePattern by lazy {
-        takeUnlessError { template.annotations.firstIsInstanceOrNull<kotlin.script.templates.ScriptTemplateDefinition>()?.scriptFilePattern }
-        ?: takeUnlessError { template.annotations.firstIsInstanceOrNull<org.jetbrains.kotlin.script.ScriptTemplateDefinition>()?.scriptFilePattern }
-        ?: DEFAULT_SCRIPT_FILE_PATTERN
+        Regex(computeScriptFilePattern(template))
+    }
+
+    private fun computeScriptFilePattern(template: KClass<out Any>): String {
+        return takeUnlessError {
+            template.annotations.firstIsInstanceOrNull<kotlin.script.templates.ScriptTemplateDefinition>()?.scriptFilePattern
+        }
+                ?: takeUnlessError { template.annotations.firstIsInstanceOrNull<ScriptTemplateDefinition>()?.scriptFilePattern }
+                ?: DEFAULT_SCRIPT_FILE_PATTERN
     }
 
     override val dependencyResolver: DependenciesResolver by lazy {
@@ -130,7 +136,7 @@ open class KotlinScriptDefinitionFromAnnotatedTemplate(
     override val name = template.simpleName!!
 
     override fun isScript(fileName: String): Boolean =
-            scriptFilePattern.let { Regex(it).matches(fileName) }
+        scriptFilePattern.matches(fileName)
 
     // TODO: implement other strategy - e.g. try to extract something from match with ScriptFilePattern
     override fun getScriptName(script: KtScript): Name = NameUtils.getScriptNameForFile(script.containingKtFile.name)
